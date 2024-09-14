@@ -20,4 +20,6 @@ The implementation is UUID v7. Throughput (as reported by Maelstrom) is 850 req/
 
 ### Broadcast
 
-Test command: `maelstrom test -w broadcast --bin ./target/debug/broadcast --node-count 1 --time-limit 20 --rate 10`
+Single-node test: `maelstrom test -w broadcast --bin ./target/debug/broadcast --node-count 1 --time-limit 20 --rate 10`  
+Multi-node test: `maelstrom test -w broadcast --bin ./target/debug/broadcast --node-count 5 --time-limit 20 --rate 10`
+

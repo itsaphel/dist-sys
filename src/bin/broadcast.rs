@@ -17,14 +17,18 @@ async fn try_main() -> Result<()> {
 
 #[derive(Clone)]
 struct Handler {
+    // List of messages received by this node
     messages: Arc<Mutex<Vec<u64>>>,
+    // List of neighbours of this node
+    neighbours: Arc<Mutex<Vec<String>>>,
 }
 
 impl Handler {
     fn new() -> Self {
         Self {
             // TODO consider a RWLock and/or using parking_lot's implementation
-            messages: Arc::new(Mutex::new(Vec::new())), // Initialise with empty vector
+            messages: Arc::new(Mutex::new(Vec::new())),
+            neighbours: Arc::new(Mutex::new(Vec::new())),
         }
     }
 }
@@ -38,22 +42,37 @@ impl Node for Handler {
             Ok(Request::Broadcast { message }) => {
                 // Lock the vec and mutate it
                 let mut messages = self.messages.lock().await;
-                messages.push(message);
+                
+                // Check if we've already seen the message
+                // If we have, we've presumably already seen and gossip'd it, so should not send again
+                if !messages.contains(&message) {
+                    messages.push(message);
+                    
+                    // Gossip message to neighbours
+                    let neighbours = self.neighbours.lock().await;
+                    for node in neighbours.clone() {
+                        runtime.call_async(node, Request::Broadcast { message });
+                    }
+                }
 
-                let response = Response::BroadcastOk;
-                runtime.reply(msg, response).await
+                runtime.reply_ok(msg).await
             }
             Ok(Request::Read) => {
                 // Lock messages and clone for response
                 let messages = self.messages.lock().await;
                 let messages = messages.clone();
-                
+
                 let response = Response::ReadOk { messages };
                 runtime.reply(msg, response).await
             }
-            Ok(Request::Topology { .. }) => {
-                let response = Response::TopologyOk;
-                runtime.reply(msg, response).await
+            Ok(Request::Topology { topology }) => {
+                // Replace the neighbours known to this node
+                let mut neighbours = self.neighbours.lock().await;
+                neighbours.clear();
+                let new_neighbours = topology.get(runtime.node_id()).unwrap();
+                neighbours.extend(new_neighbours.clone());
+
+                runtime.reply_ok(msg).await
             }
             _ => done(runtime, msg)
         }
