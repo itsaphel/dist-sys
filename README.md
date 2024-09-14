@@ -21,5 +21,9 @@ The implementation is UUID v7. Throughput (as reported by Maelstrom) is 850 req/
 ### Broadcast
 
 Single-node test: `maelstrom test -w broadcast --bin ./target/debug/broadcast --node-count 1 --time-limit 20 --rate 10`  
-Multi-node test: `maelstrom test -w broadcast --bin ./target/debug/broadcast --node-count 5 --time-limit 20 --rate 10`
+Multi-node test: `maelstrom test -w broadcast --bin ./target/debug/broadcast --node-count 5 --time-limit 20 --rate 10`  
+Multi-node with network partitions: `maelstrom test -w broadcast --bin ./target/debug/broadcast --node-count 5 --time-limit 20 --rate 10 --nemesis partition`
 
+Notes when implementing multi-node broadcast:
+* Going from tokio's Mutex to std's Mutex increased throughput slightly, but not massively. Main throughput increase was observed in startup time.
+* Switching from std::sync::Mutex to std::sync::RwLock decreased performance *slightly*, but was negligible. This was a surprising result, so I reckon the difference might just be due to random variance and the test should be repeated a couple times. Otherwise, it could be due to the specifics of how the test is ran in Maelstrom (ie: how parallelised the nodes really are). Also, it could be bottlenecked by the `rate`.
