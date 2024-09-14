@@ -1,40 +1,29 @@
 use std::sync::Arc;
-use std::sync::atomic::{AtomicU64, Ordering};
 use async_trait::async_trait;
 use maelstrom::{Runtime, Result, Node, done};
 use maelstrom::protocol::Message;
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 pub(crate) fn main() -> Result<()> {
     Runtime::init(try_main())
 }
 
 async fn try_main() -> Result<()> {
-    let handler = Arc::new(Handler::new());
+    let handler = Arc::new(Handler::default());
     Runtime::new().with_handler(handler).run().await
 }
 
-#[derive(Clone)]
-struct Handler {
-    counter: Arc<AtomicU64>,
-}
-
-impl Handler {
-    fn new() -> Self {
-        Handler {
-            counter: Arc::new(AtomicU64::new(0))
-        }
-    }
-}
+#[derive(Clone, Default)]
+struct Handler {}
 
 #[async_trait]
 impl Node for Handler {
     async fn process(&self, runtime: Runtime, req: Message) -> Result<()> {
         if req.get_type() == "generate" {
-            let counter_id = self.counter.fetch_add(1, Ordering::SeqCst);
-            let id = format!("{}-{}", req.dest, counter_id);
+            let id = Uuid::now_v7();
 
-            let res = Response::GenerateOk { id };
+            let res = Response::GenerateOk { id: id.to_string() };
             return runtime.reply(req, res).await
         }
 
