@@ -50,7 +50,7 @@ struct QueueItem {
 
 impl Display for QueueItem {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "QueueItem [ node: {}, message: {} ]", self.node, self.message)
+        write!(f, "[ node: {}, message: {} ]", self.node, self.message)
     }
 }
 
@@ -64,6 +64,7 @@ impl Handler {
             thread_running: false,
             items: VecDeque::new(),
         };
+
         Self {
             messages: Arc::new(Mutex::new(Vec::new())),
             neighbours: Arc::new(Mutex::new(neighbours)),
@@ -113,17 +114,17 @@ impl Handler {
         let mut queue = self.queue.lock()
             .expect("Could not get lock on queue");
 
+        queue.items.push_back(QueueItem {
+            node: to_node.clone(),
+            message,
+        });
+
         info!(
             "Adding message {} to {} to queue. Full queue: {}",
             message,
             to_node,
-            queue.items.iter().map(|item| format!("{}", item)).collect::<Vec<String>>().join("\n")
+            queue.items.iter().map(|item| format!("{}", item)).collect::<Vec<String>>().join(", ")
         );
-
-        queue.items.push_back(QueueItem {
-            node: to_node,
-            message,
-        });
 
         if !queue.thread_running {
             spawn_recovery_thread(runtime, self.clone());
