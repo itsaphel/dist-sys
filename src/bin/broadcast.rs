@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio_context::context::Context;
 
-const TIMEOUT_IN_MILLIS: u64 = 100;
+const TIMEOUT_IN_MILLIS: u64 = 500;
 
 pub(crate) fn main() -> Result<()> {
     Runtime::init(try_main())
@@ -173,21 +173,20 @@ fn spawn_recovery_thread(runtime: Runtime, handler: Handler) {
             let mut queue = handler.queue.lock()
                 .expect("Could not get lock on queue");
 
-            // Terminate this thread if no items left in queue
-            if queue.items.is_empty() {
-                queue.thread_running = false;
-                break;
+            if let Some(item) = queue.items.pop_front() {
+                // Release lock on queue
+                drop(queue);
+
+                runtime0.spawn(
+                    send_message_with_retry(runtime0.clone(), handler.clone(), item.message, item.node)
+                );
+            } else {
+                // Terminate this thread if no items left in queue
+                if queue.items.is_empty() {
+                    queue.thread_running = false;
+                    break;
+                }
             }
-
-            let item = queue.items.pop_front()
-                .expect("Should be able to pop from front of non-empty queue");
-
-            // Release lock on queue
-            drop(queue);
-
-            runtime0.spawn(
-                send_message_with_retry(runtime0.clone(), handler.clone(), item.message, item.node)
-            );
         }
     });
 }
