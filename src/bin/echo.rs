@@ -1,6 +1,6 @@
 use std::sync::Arc;
 use async_trait::async_trait;
-use maelstrom::{Runtime, Result, Node};
+use maelstrom::{Runtime, Result, Node, done};
 use maelstrom::protocol::Message;
 
 pub(crate) fn main() -> Result<()> {
@@ -18,6 +18,11 @@ struct Handler {}
 #[async_trait]
 impl Node for Handler {
     async fn process(&self, runtime: Runtime, request: Message) -> Result<()> {
-        todo!()
+        if request.get_type() == "echo" {
+            let response = request.body.clone().with_type("echo_ok");
+            return runtime.reply(request, response).await
+        }
+
+        done(runtime, request)
     }
 }
