@@ -1,4 +1,6 @@
 use async_trait::async_trait;
+use futures::FutureExt;
+use log::{error, info};
 use maelstrom::protocol::Message;
 use maelstrom::{done, Node, Result, Runtime};
 use serde::{Deserialize, Serialize};
@@ -24,7 +26,7 @@ struct Handler {
     // List of neighbours of this node
     neighbours: Arc<Mutex<Inner<String>>>,
     // A queue for unsent outbound messages
-    queue: Arc<TokioMutex<VecDeque<QueueItem>>>,
+    queue: Arc<TokioMutex<Queue>>,
 }
 
 #[derive(Default)]
@@ -32,6 +34,12 @@ struct Inner<T> {
     vec: Vec<T>,
 }
 
+struct Queue {
+    thread_running: bool,
+    items: VecDeque<QueueItem>,
+}
+
+#[derive(Debug)]
 struct QueueItem {
     node: String,
     message: u64,
@@ -43,10 +51,14 @@ struct QueueItem {
 impl Handler {
     fn new() -> Self {
         let neighbours: Inner<String> = Inner::default();
+        let queue = Queue {
+            thread_running: false,
+            items: VecDeque::new(),
+        };
         Self {
             messages: Arc::new(Mutex::new(Vec::new())),
             neighbours: Arc::new(Mutex::new(neighbours)),
-            queue: Arc::new(TokioMutex::new(VecDeque::new())),
+            queue: Arc::new(TokioMutex::new(queue)),
         }
     }
 
@@ -86,28 +98,39 @@ impl Handler {
         neighbours.vec = new_neighbours.clone();
     }
 
-    async fn add_failed_message(&self, to_node: String, message: u64) {
+    async fn add_failed_message(&self, to_node: String, message: u64, runtime: Option<Runtime>) {
         let mut queue = self.queue.lock().await;
 
-        queue.push_back(QueueItem {
+        info!("Adding message {} to {} to queue. Full queue: {:#?}", message, to_node, queue.items);
+
+        queue.items.push_back(QueueItem {
             node: to_node,
             message,
-        })
+        });
+
+        if !queue.thread_running {
+            self.spawn_recovery_thread(runtime.unwrap());
+        }
     }
 
     fn spawn_recovery_thread(&self, runtime: Runtime) {
         let handler = self.clone();
-
         let runtime0 = runtime.clone();
+
         runtime.spawn(async move {
+            let mut queue = handler.queue.lock().await;
+            queue.thread_running = true;
+            drop(queue);
+
             loop {
                 let mut queue = handler.queue.lock().await;
 
-                if queue.is_empty() {
+                if queue.items.is_empty() {
+                    queue.thread_running = false;
                     break;
                 }
 
-                let item = queue.pop_front()
+                let item = queue.items.pop_front()
                     .expect("Should be able to pop from front of non-empty queue");
 
                 // Release lock on queue
@@ -121,7 +144,7 @@ impl Handler {
                 ).await;
 
                 if result.is_err() {
-                    handler.add_failed_message(item.node, item.message).await;
+                    handler.add_failed_message(item.node, item.message, None).await;
                 }
             }
         });
@@ -145,14 +168,22 @@ impl Node for Handler {
                         .collect();
                     for node in neighbours {
                         let (ctx, _handler) = Context::with_timeout(Duration::from_millis(100));
-                        let result = runtime.call(ctx, node.clone(), Request::Broadcast { message }).await;
-                        if result.is_err() {
-                            self.add_failed_message(node, message).await;
 
-                            // TODO don't spawn recovery thread if already spawned. Or spawn it at
-                            //  the start.
-                            self.spawn_recovery_thread(runtime.clone());
-                        }
+                        // Send message with retries
+                        let runtime0 = runtime.clone();
+                        let runtime1 = runtime.clone();
+                        let handler0 = self.clone();
+                        runtime.spawn(async move {
+                            runtime0
+                                .call(ctx, node.clone(), Request::Broadcast { message })
+                                .then(|result| async move {
+                                    if let Err(err) = result {
+                                        error!("Error sending message {} to {}: {}", message, node, err);
+                                        handler0.add_failed_message(node, message, Some(runtime1)).await;
+                                    }
+                                })
+                                .await
+                        });
                     }
                 }
 
