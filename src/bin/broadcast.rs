@@ -8,8 +8,11 @@ use std::collections::{HashMap, VecDeque};
 use std::fmt::{Display, Formatter};
 use std::future::Future;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 use tokio::sync::Mutex as TokioMutex;
 use tokio_context::context::Context;
+
+const TIMEOUT_IN_MILLIS: u64 = 100;
 
 pub(crate) fn main() -> Result<()> {
     Runtime::init(try_main())
@@ -134,10 +137,13 @@ fn send_message_with_retry(
     message: u64,
     node: String,
 ) -> impl Future<Output=()> {
-    let (ctx, _) = Context::new();
+    let (ctx, ctx_handle) = Context::with_timeout(Duration::from_millis(TIMEOUT_IN_MILLIS));
     let runtime0 = runtime.clone();
 
     async move {
+        // Keep ctx_handler in scope to avoid premature cancellation of the Context
+        let _ctx_handle = ctx_handle;
+
         runtime
             .call(ctx, node.clone(), Request::Broadcast { message })
             .then(|result| async move {
