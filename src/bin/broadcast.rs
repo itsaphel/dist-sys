@@ -20,17 +20,23 @@ struct Handler {
     // List of messages received by this node
     messages: Arc<Mutex<Vec<u64>>>,
     // List of neighbours of this node
-    neighbours: Arc<Mutex<Vec<String>>>,
+    neighbours: Arc<Mutex<Inner<String>>>,
 }
 
 impl Handler {
     fn new() -> Self {
+        let neighbours: Inner<String> = Inner::default();
         Self {
             // TODO consider a RWLock and/or using parking_lot's implementation
             messages: Arc::new(Mutex::new(Vec::new())),
-            neighbours: Arc::new(Mutex::new(Vec::new())),
+            neighbours: Arc::new(Mutex::new(neighbours)),
         }
     }
+}
+
+#[derive(Default)]
+struct Inner<T> {
+    vec: Vec<T>
 }
 
 #[async_trait]
@@ -50,7 +56,7 @@ impl Node for Handler {
                     
                     // Gossip message to neighbours
                     let neighbours = self.neighbours.lock().await;
-                    for node in neighbours.clone() {
+                    for node in neighbours.vec.clone() {
                         runtime.call_async(node, Request::Broadcast { message });
                     }
                 }
@@ -68,9 +74,8 @@ impl Node for Handler {
             Ok(Request::Topology { topology }) => {
                 // Replace the neighbours known to this node
                 let mut neighbours = self.neighbours.lock().await;
-                neighbours.clear();
                 let new_neighbours = topology.get(runtime.node_id()).unwrap();
-                neighbours.extend(new_neighbours.clone());
+                neighbours.vec = new_neighbours.clone();
 
                 runtime.reply_ok(msg).await
             }
