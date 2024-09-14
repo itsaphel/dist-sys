@@ -51,5 +51,5 @@ is:
 My current solution for multi-broadcast, described above, achieves:
 
 * Messages per operation: 48.275764
-* Median latency: 2527ms
-* Max latency: 8775ms
+* Median latency: 1048ms
+* Max latency: 2324ms
