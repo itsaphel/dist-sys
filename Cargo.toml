@@ -26,3 +26,6 @@ name = "echo"
 
 [[bin]]
 name = "unique-id"
+
+[[bin]]
+name = "broadcast"
