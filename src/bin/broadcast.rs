@@ -6,8 +6,8 @@ use maelstrom::{done, Node, Result, Runtime};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 use std::fmt::{Display, Formatter};
+use std::future::Future;
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 use tokio::sync::Mutex as TokioMutex;
 use tokio_context::context::Context;
 
@@ -105,8 +105,7 @@ impl Handler {
         neighbours.vec = new_neighbours.clone();
     }
 
-    // TODO: Optional runtime arg is a bit ugly. Let's refactor this.
-    async fn add_failed_message(&self, to_node: String, message: u64, runtime: Option<Runtime>) {
+    async fn add_failed_message(&self, to_node: String, message: u64, runtime: Runtime) {
         let mut queue = self.queue.lock().await;
 
         info!(
@@ -122,46 +121,65 @@ impl Handler {
         });
 
         if !queue.thread_running {
-            self.spawn_recovery_thread(runtime.unwrap());
+            spawn_recovery_thread(runtime, self.clone());
         }
     }
+}
 
-    fn spawn_recovery_thread(&self, runtime: Runtime) {
-        let handler = self.clone();
-        let runtime0 = runtime.clone();
+// Send a message to a node with retries.
+// If the communication fails due to an error, it will be retried.
+fn send_message_with_retry(
+    runtime: Runtime,
+    handler: Handler,
+    message: u64,
+    node: String,
+) -> impl Future<Output=()> {
+    let (ctx, _) = Context::new();
+    let runtime0 = runtime.clone();
 
-        runtime.spawn(async move {
+    async move {
+        runtime
+            .call(ctx, node.clone(), Request::Broadcast { message })
+            .then(|result| async move {
+                if let Err(err) = result {
+                    error!("Error sending message {} to {}: {}", message, node, err);
+                    handler.add_failed_message(node, message, runtime0).await;
+                }
+            })
+            .await
+    }
+}
+
+fn spawn_recovery_thread(runtime: Runtime, handler: Handler) {
+    // Both Handler and Runtime are implemented as Arc, so cloning just bumps the reference count
+    // This is needed because we'll pass these variables to a new thread.
+    let runtime0 = runtime.clone();
+
+    runtime.spawn(async move {
+        let mut queue = handler.queue.lock().await;
+        queue.thread_running = true;
+        drop(queue);
+
+        loop {
             let mut queue = handler.queue.lock().await;
-            queue.thread_running = true;
+
+            // Terminate this thread if no items left in queue
+            if queue.items.is_empty() {
+                queue.thread_running = false;
+                break;
+            }
+
+            let item = queue.items.pop_front()
+                .expect("Should be able to pop from front of non-empty queue");
+
+            // Release lock on queue
             drop(queue);
 
-            loop {
-                let mut queue = handler.queue.lock().await;
-
-                if queue.items.is_empty() {
-                    queue.thread_running = false;
-                    break;
-                }
-
-                let item = queue.items.pop_front()
-                    .expect("Should be able to pop from front of non-empty queue");
-
-                // Release lock on queue
-                drop(queue);
-
-                let (ctx, _handler) = Context::with_timeout(Duration::from_millis(100));
-                let result = runtime0.call(
-                    ctx,
-                    item.node.clone(),
-                    Request::Broadcast { message: item.message },
-                ).await;
-
-                if result.is_err() {
-                    handler.add_failed_message(item.node, item.message, None).await;
-                }
-            }
-        });
-    }
+            runtime0.spawn(
+                send_message_with_retry(runtime0.clone(), handler.clone(), item.message, item.node)
+            );
+        }
+    });
 }
 
 #[async_trait]
@@ -174,29 +192,15 @@ impl Node for Handler {
                 // Check if we've already seen the message
                 // If we have, we've presumably already seen and gossip'd it, so should not send again
                 if self.add_message(message) {
-                    // Gossip message to neighbours
+                    // Gossip message to neighbours, but exclude the sender of the broadcast
                     let neighbours: Vec<String> = self.get_neighbours()
                         .into_iter()
                         .filter(|t: &String| t.as_str() != msg.src)
                         .collect();
                     for node in neighbours {
-                        let (ctx, _handler) = Context::with_timeout(Duration::from_millis(100));
-
-                        // Send message with retries
-                        let runtime0 = runtime.clone();
-                        let runtime1 = runtime.clone();
-                        let handler0 = self.clone();
-                        runtime.spawn(async move {
-                            runtime0
-                                .call(ctx, node.clone(), Request::Broadcast { message })
-                                .then(|result| async move {
-                                    if let Err(err) = result {
-                                        error!("Error sending message {} to {}: {}", message, node, err);
-                                        handler0.add_failed_message(node, message, Some(runtime1)).await;
-                                    }
-                                })
-                                .await
-                        });
+                        runtime.spawn(
+                            send_message_with_retry(runtime.clone(), self.clone(), message, node)
+                        );
                     }
                 }
 
