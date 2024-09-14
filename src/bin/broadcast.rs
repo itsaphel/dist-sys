@@ -1,9 +1,12 @@
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
 use async_trait::async_trait;
-use maelstrom::{Runtime, Result, Node, done};
 use maelstrom::protocol::Message;
+use maelstrom::{done, Node, Result, Runtime};
 use serde::{Deserialize, Serialize};
+use std::collections::{HashMap, VecDeque};
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+use tokio::sync::Mutex as TokioMutex;
+use tokio_context::context::Context;
 
 pub(crate) fn main() -> Result<()> {
     Runtime::init(try_main())
@@ -20,6 +23,18 @@ struct Handler {
     messages: Arc<Mutex<Vec<u64>>>,
     // List of neighbours of this node
     neighbours: Arc<Mutex<Inner<String>>>,
+    // A queue for unsent outbound messages
+    queue: Arc<TokioMutex<VecDeque<QueueItem>>>,
+}
+
+#[derive(Default)]
+struct Inner<T> {
+    vec: Vec<T>,
+}
+
+struct QueueItem {
+    node: String,
+    message: u64,
 }
 
 // The handler contains implementations for various functions used by the `process` function of the
@@ -31,6 +46,7 @@ impl Handler {
         Self {
             messages: Arc::new(Mutex::new(Vec::new())),
             neighbours: Arc::new(Mutex::new(neighbours)),
+            queue: Arc::new(TokioMutex::new(VecDeque::new())),
         }
     }
 
@@ -69,11 +85,47 @@ impl Handler {
             .expect("Could not lock neighbours for replacement");
         neighbours.vec = new_neighbours.clone();
     }
-}
 
-#[derive(Default)]
-struct Inner<T> {
-    vec: Vec<T>,
+    async fn add_failed_message(&self, to_node: String, message: u64) {
+        let mut queue = self.queue.lock().await;
+
+        queue.push_back(QueueItem {
+            node: to_node,
+            message,
+        })
+    }
+
+    fn spawn_recovery_thread(&self, runtime: Runtime) {
+        let handler = self.clone();
+
+        let runtime0 = runtime.clone();
+        runtime.spawn(async move {
+            loop {
+                let mut queue = handler.queue.lock().await;
+
+                if queue.is_empty() {
+                    break;
+                }
+
+                let item = queue.pop_front()
+                    .expect("Should be able to pop from front of non-empty queue");
+
+                // Release lock on queue
+                drop(queue);
+
+                let (ctx, _handler) = Context::with_timeout(Duration::from_millis(100));
+                let result = runtime0.call(
+                    ctx,
+                    item.node.clone(),
+                    Request::Broadcast { message: item.message },
+                ).await;
+
+                if result.is_err() {
+                    handler.add_failed_message(item.node, item.message).await;
+                }
+            }
+        });
+    }
 }
 
 #[async_trait]
@@ -87,9 +139,20 @@ impl Node for Handler {
                 // If we have, we've presumably already seen and gossip'd it, so should not send again
                 if self.add_message(message) {
                     // Gossip message to neighbours
-                    let neighbours = self.get_neighbours();
+                    let neighbours: Vec<String> = self.get_neighbours()
+                        .into_iter()
+                        .filter(|t: &String| t.as_str() != msg.src)
+                        .collect();
                     for node in neighbours {
-                        runtime.call_async(node, Request::Broadcast { message });
+                        let (ctx, _handler) = Context::with_timeout(Duration::from_millis(100));
+                        let result = runtime.call(ctx, node.clone(), Request::Broadcast { message }).await;
+                        if result.is_err() {
+                            self.add_failed_message(node, message).await;
+
+                            // TODO don't spawn recovery thread if already spawned. Or spawn it at
+                            //  the start.
+                            self.spawn_recovery_thread(runtime.clone());
+                        }
                     }
                 }
 
