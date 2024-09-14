@@ -5,6 +5,7 @@ use maelstrom::protocol::Message;
 use maelstrom::{done, Node, Result, Runtime};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
+use std::fmt::{Display, Formatter};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio::sync::Mutex as TokioMutex;
@@ -43,6 +44,12 @@ struct Queue {
 struct QueueItem {
     node: String,
     message: u64,
+}
+
+impl Display for QueueItem {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "QueueItem [ node: {}, message: {} ]", self.node, self.message)
+    }
 }
 
 // The handler contains implementations for various functions used by the `process` function of the
@@ -98,10 +105,16 @@ impl Handler {
         neighbours.vec = new_neighbours.clone();
     }
 
+    // TODO: Optional runtime arg is a bit ugly. Let's refactor this.
     async fn add_failed_message(&self, to_node: String, message: u64, runtime: Option<Runtime>) {
         let mut queue = self.queue.lock().await;
 
-        info!("Adding message {} to {} to queue. Full queue: {:#?}", message, to_node, queue.items);
+        info!(
+            "Adding message {} to {} to queue. Full queue: {}",
+            message,
+            to_node,
+            queue.items.iter().map(|item| format!("{}", item)).collect::<Vec<String>>().join("\n")
+        );
 
         queue.items.push_back(QueueItem {
             node: to_node,
