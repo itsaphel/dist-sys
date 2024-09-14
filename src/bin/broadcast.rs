@@ -9,7 +9,6 @@ use std::fmt::{Display, Formatter};
 use std::future::Future;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tokio::sync::Mutex as TokioMutex;
 use tokio_context::context::Context;
 
 const TIMEOUT_IN_MILLIS: u64 = 100;
@@ -30,7 +29,7 @@ struct Handler {
     // List of neighbours of this node
     neighbours: Arc<Mutex<Inner<String>>>,
     // A queue for unsent outbound messages
-    queue: Arc<TokioMutex<Queue>>,
+    queue: Arc<Mutex<Queue>>,
 }
 
 #[derive(Default)]
@@ -68,7 +67,7 @@ impl Handler {
         Self {
             messages: Arc::new(Mutex::new(Vec::new())),
             neighbours: Arc::new(Mutex::new(neighbours)),
-            queue: Arc::new(TokioMutex::new(queue)),
+            queue: Arc::new(Mutex::new(queue)),
         }
     }
 
@@ -108,8 +107,11 @@ impl Handler {
         neighbours.vec = new_neighbours.clone();
     }
 
-    async fn add_failed_message(&self, to_node: String, message: u64, runtime: Runtime) {
-        let mut queue = self.queue.lock().await;
+    // Add a message to an outbox queue. The queue will keep trying to resend the message in a
+    // background thread until a successful response is received.
+    fn add_message_to_queue(&self, to_node: String, message: u64, runtime: Runtime) {
+        let mut queue = self.queue.lock()
+            .expect("Could not get lock on queue");
 
         info!(
             "Adding message {} to {} to queue. Full queue: {}",
@@ -141,7 +143,7 @@ fn send_message_with_retry(
     let runtime0 = runtime.clone();
 
     async move {
-        // Keep ctx_handler in scope to avoid premature cancellation of the Context
+        // Keep ctx_handle in scope to avoid premature cancellation of the Context
         let _ctx_handle = ctx_handle;
 
         runtime
@@ -149,7 +151,7 @@ fn send_message_with_retry(
             .then(|result| async move {
                 if let Err(err) = result {
                     error!("Error sending message {} to {}: {}", message, node, err);
-                    handler.add_failed_message(node, message, runtime0).await;
+                    handler.add_message_to_queue(node, message, runtime0);
                 }
             })
             .await
@@ -162,12 +164,14 @@ fn spawn_recovery_thread(runtime: Runtime, handler: Handler) {
     let runtime0 = runtime.clone();
 
     runtime.spawn(async move {
-        let mut queue = handler.queue.lock().await;
+        let mut queue = handler.queue.lock()
+            .expect("Could not get lock on queue");
         queue.thread_running = true;
         drop(queue);
 
         loop {
-            let mut queue = handler.queue.lock().await;
+            let mut queue = handler.queue.lock()
+                .expect("Could not get lock on queue");
 
             // Terminate this thread if no items left in queue
             if queue.items.is_empty() {
