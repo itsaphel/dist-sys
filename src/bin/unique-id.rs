@@ -31,7 +31,8 @@ impl Handler {
 impl Node for Handler {
     async fn process(&self, runtime: Runtime, req: Message) -> Result<()> {
         if req.get_type() == "generate" {
-            let id = self.counter.fetch_add(1, Ordering::SeqCst);
+            let counter_id = self.counter.fetch_add(1, Ordering::SeqCst);
+            let id = format!("{}-{}", req.dest, counter_id);
 
             let res = Response::GenerateOk { id };
             return runtime.reply(req, res).await
@@ -44,5 +45,5 @@ impl Node for Handler {
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", tag = "type")]
 enum Response {
-    GenerateOk { id: u64 },
+    GenerateOk { id: String },
 }
