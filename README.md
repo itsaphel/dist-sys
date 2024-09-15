@@ -53,3 +53,47 @@ My current solution for multi-broadcast, described above, achieves:
 * Messages per operation: 48.275764
 * Median latency: 1048ms
 * Max latency: 2324ms
+
+## CRDTs
+
+The g-set problem is documented nicely in the Maelstrom
+repo, [here](https://github.com/jepsen-io/maelstrom/blob/main/doc/04-crdts/01-g-set.md). There's also a nice summary of
+CRDTs [here](https://jamsocket.com/blog/you-might-not-need-a-crdt).
+
+The fundamental difference between broad and CRDTs, using Maelstrom's definition, seems to be that in a CRDT, nodes send
+messages periodically and batch together messages, rather than send them immediately as in the original implementation
+of broadcast using a gossip protocol. (I'm unsure if immediate async delivery is a strict requirement of the broadcast
+problem.)
+
+Ultimately, this means latencies might be a bit higher compared to broadcast, in exchange for messages-per-op being
+lower.
+
+## Kafka
+
+The Kafka challenge is about replicating a log across nodes.
+
+Each log is identified by a key (like a kafka topic) and contains a bunch of messages which are identified by integer
+offsets. Two properties are verified by the checker:
+
+* Offsets are monotonically increasing: newer messages have a larger offset number
+* No lost writes: If a node sees offset `10`, it must've also seen offset `5`
+
+The system is eventually consistent with no bound on replication lag; nodes do not need to provide newly sent messages
+immediately.
+
+### Single-node replicated log design
+
+Access patterns:
+
+* `send` needs to take a topic ID and a message. The message needs to be appended to the log of the topic. It needs to
+  return an offset under which the message can be found.
+* `poll` can request messages from multiple topics. It provides a topic ID and a minimum offset number. For each topic,
+  the response needs to contain messages >= that offset. However, note that the server is allowed to limit the amount of
+  messages to N per topic, which is useful if there is a large number of messages.
+* `commit_offsets` is used to indicate a client has processed messages up to (and including) the offset. Multiple topics
+  can be referenced in the request.
+* `list_committed_offsets` is used when the client wants to know what offset, per topic, has been processed, so it knows
+  where to start consuming from. The number returned should be the last committed offset.
+
+Based on these access patterns a binary tree or btree structure makes sense for quick lookups of messages per topic, by
+offset (which is the key).
