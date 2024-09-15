@@ -1,12 +1,10 @@
 use async_trait::async_trait;
-use futures::FutureExt;
 use log::{error, info};
 use maelstrom::protocol::Message;
 use maelstrom::{done, Node, Result, Runtime};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, VecDeque};
 use std::fmt::{Display, Formatter};
-use std::future::Future;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use tokio_context::context::Context;
@@ -134,28 +132,26 @@ impl Handler {
 
 // Send a message to a node with retries.
 // If the communication fails due to an error, it will be retried.
-fn send_message_with_retry(
+async fn send_message_with_retry(
     runtime: Runtime,
     handler: Handler,
     message: u64,
     node: String,
-) -> impl Future<Output=()> {
+) {
     let (ctx, ctx_handle) = Context::with_timeout(Duration::from_millis(TIMEOUT_IN_MILLIS));
     let runtime0 = runtime.clone();
 
-    async move {
-        // Keep ctx_handle in scope to avoid premature cancellation of the Context
-        let _ctx_handle = ctx_handle;
+    // Keep ctx_handle in scope to avoid premature cancellation of the Context
+    let _ctx_handle = ctx_handle;
 
-        runtime
-            .call(ctx, node.clone(), Request::Broadcast { message })
-            .then(|result| async move {
-                if let Err(err) = result {
-                    error!("Error sending message {} to {}: {}", message, node, err);
-                    handler.add_message_to_queue(node, message, runtime0);
-                }
-            })
-            .await
+    let result = runtime
+        .call(ctx, node.clone(), Request::Broadcast { message })
+        .await;
+
+    if let Err(err) = result
+    {
+        error!("Error sending message {} to {}: {}", message, node, err);
+        handler.add_message_to_queue(node, message, runtime0);
     }
 }
 
