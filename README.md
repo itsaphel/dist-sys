@@ -18,21 +18,23 @@ just `maelstrom`.
 
 ## Echo
 
-Test command: `maelstrom test -w echo --bin ./target/debug/echo --node-count 1 --time-limit 10 --log-stderr`
+* Test command: `maelstrom test -w echo --bin ./target/debug/echo --node-count 1 --time-limit 10 --log-stderr`
 
 ## Unique IDs
 
-Test command: `maelstrom test -w unique-ids --bin ./target/debug/unique-id --time-limit 30 --rate 1000 --node-count 3 --availability total --nemesis partition`
+* Test command:
+  `maelstrom test -w unique-ids --bin ./target/debug/unique-id --time-limit 30 --rate 1000 --node-count 3 --availability total --nemesis partition`
 
 The implementation is UUID v7. Throughput (as reported by Maelstrom) is 850 req/s with a latency of around 1ms, on my Mac. This is similar to a per-node globally incrementing counter approach. Perhaps the bottleneck is my Maelstrom arguments and my laptop, rather than the algorithm itself. It'd be cool to try out something like [Twitter's Snowflake](https://github.com/twitter-archive/snowflake/tree/b3f6a3c6ca8e1b6847baa6ff42bf72201e2c2231), which reports a minimum 10k ids/process performance.
 
 ## Broadcast
 
-Single-node test: `maelstrom test -w broadcast --bin ./target/debug/broadcast --node-count 1 --time-limit 20 --rate 10`  
-Multi-node test: `maelstrom test -w broadcast --bin ./target/debug/broadcast --node-count 5 --time-limit 20 --rate 10`  
-Multi-node with network partitions:
-`maelstrom test -w broadcast --bin ./target/debug/broadcast --node-count 5 --time-limit 20 --rate 10 --nemesis partition`  
-Performance I:
+* Single-node test:
+  `maelstrom test -w broadcast --bin ./target/debug/broadcast --node-count 1 --time-limit 20 --rate 10`
+* Multi-node test: `maelstrom test -w broadcast --bin ./target/debug/broadcast --node-count 5 --time-limit 20 --rate 10`
+* Multi-node with network partitions:
+  `maelstrom test -w broadcast --bin ./target/debug/broadcast --node-count 5 --time-limit 20 --rate 10 --nemesis partition`
+* Performance I:
 `maelstrom test -w broadcast --bin ./target/debug/broadcast --node-count 25 --time-limit 20 --rate 100 --latency 100`
 
 Notes when implementing multi-node broadcast:
@@ -56,17 +58,15 @@ My current solution for multi-broadcast, described above, achieves:
 
 ## CRDTs
 
-The g-set problem is documented nicely in the Maelstrom
-repo, [here](https://github.com/jepsen-io/maelstrom/blob/main/doc/04-crdts/01-g-set.md). There's also a nice summary of
-CRDTs [here](https://jamsocket.com/blog/you-might-not-need-a-crdt).
+One downside of broadcast is that it's quite chatty. What if we could send a batch of messages instead? Continuing down
+this line of thought, we end up at CRDTs. Conflict-free replicated data types (CRDTs) are any data structure that can be
+replicated across multiple nodes, with an eventual consistency model that resolves conflicts in some manner.
 
-The fundamental difference between broad and CRDTs, using Maelstrom's definition, seems to be that in a CRDT, nodes send
-messages periodically and batch together messages, rather than send them immediately as in the original implementation
-of broadcast using a gossip protocol. (I'm unsure if immediate async delivery is a strict requirement of the broadcast
-problem.)
+To resolve conflicts, we can either make the operations commutative (applying `a` then `b` is the same as applying `b`
+then `a`), or avoid conflicts in the first place by ensuring the sequence of events is replicated in-order (we'll
+discuss this problem in the Kafka section below).
 
-Ultimately, this means latencies might be a bit higher compared to broadcast, in exchange for messages-per-op being
-lower.
+When batching together messages, we get lower `messages-per-op`, in exchange for latency potentially being higher.
 
 ## Kafka
 
