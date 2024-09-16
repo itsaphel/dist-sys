@@ -25,7 +25,11 @@ just `maelstrom`.
 * Test command:
   `maelstrom test -w unique-ids --bin ./target/debug/unique-id --time-limit 30 --rate 1000 --node-count 3 --availability total --nemesis partition`
 
-The implementation is UUID v7. Throughput (as reported by Maelstrom) is 850 req/s with a latency of around 1ms, on my Mac. This is similar to a per-node globally incrementing counter approach. Perhaps the bottleneck is my Maelstrom arguments and my laptop, rather than the algorithm itself. It'd be cool to try out something like [Twitter's Snowflake](https://github.com/twitter-archive/snowflake/tree/b3f6a3c6ca8e1b6847baa6ff42bf72201e2c2231), which reports a minimum 10k ids/process performance.
+The implementation is UUID v7. Throughput (as reported by Maelstrom) is 850 req/s with a latency of around 1ms, on my
+Mac. This is similar to a per-node globally incrementing counter approach. Perhaps the bottleneck is my Maelstrom
+arguments or my laptop, rather than the algorithm itself. It'd also be cool to try out something
+like [Twitter's Snowflake](https://github.com/twitter-archive/snowflake/tree/b3f6a3c6ca8e1b6847baa6ff42bf72201e2c2231),
+which reports a minimum 10k ids/sec/process performance.
 
 ## Broadcast
 
@@ -39,7 +43,10 @@ The implementation is UUID v7. Throughput (as reported by Maelstrom) is 850 req/
 
 Notes when implementing multi-node broadcast:
 * Going from tokio's Mutex to std's Mutex increased throughput slightly, but not massively. Main throughput increase was observed in startup time.
-* Switching from std::sync::Mutex to std::sync::RwLock decreased performance *slightly*, but was negligible. This was a surprising result, so I reckon the difference might just be due to random variance and the test should be repeated a couple times. Otherwise, it could be due to the specifics of how the test is ran in Maelstrom (ie: how parallelised the nodes really are). Also, it could be bottlenecked by the `rate`.
+* Switching from `std::sync::Mutex` to `std::sync::RwLock` decreased performance *slightly*, but was negligible. This
+  was a surprising result, so I reckon the difference might just be due to random variance and the test should be
+  repeated a couple times. Otherwise, it could be due to the specifics of how the test is ran in Maelstrom (ie: how
+  parallelised the nodes really are). Also, it could be bottlenecked by the `rate`.
 
 ### Performance
 
@@ -50,11 +57,57 @@ is:
 * Median latency below 400ms
 * Maximum latency below 600ms
 
-My current solution for multi-broadcast, described above, achieves:
+Under a grid topology, my existing solution for multi-broadcast achieves:
 
 * Messages per operation: 48.275764
 * Median latency: 1048ms
 * Max latency: 2324ms
+
+The key to improving performance further is to change the topology. A grid topology results in a lot of write
+amplification. In a 3x3 grid:
+
+```
+n1 n2 n3
+n4 n5 n6
+n7 n8 n9
+```
+
+note that a message sent to n5 propagates to n2 and n4, who then send the message to their neighbours, so n1 receives
+the same message twice. This quickly gets worse in larger grids.
+
+A line topology is optimal for decreasing `messages-per-op`, but increases latency substantially and, in the presence of
+failures, also is quite bad for fault-tolerance (note that, in pathological cases, nodes on the tails of the line are
+particularly susceptible to failures).
+
+To meet the requirements of challenge 3d, a tree-based topology is sufficient. Maelstrom has support for various tree
+topologies which can be enabled with the `--topology` flag. With `--topology tree4` the metrics are much lower:
+
+* Messages per operation: 24.052805
+* Median latency: 365ms
+* Max latency: 516ms
+
+### Fault-tolerance
+
+The key to achieving fault-tolerance, in my implementation, is retries. If a communication fails, the message is added
+to a queue and a single background thread attempts to resend the message until it is acknowledged.
+
+To prevent a ton of OS threads being spawned, a single worker is used to process the queue, rather than the handler
+thread continuing indefinitely until the message is acknowledged. Further, to prevent a single failing node from
+blocking the entire queue, a message is popped from the head during retry and is appended to the tail of the queue if it
+fails again.
+
+Issues with the implementation:
+
+* The worker is currently a tight loop with no sleep. A cooldown is perhaps good to avoid hitting failed nodes too hard.
+* Consider [circuit breakers](https://martinfowler.com/bliki/CircuitBreaker.html): if a particular node is down, it's
+  not particularly helpful for more requests to continue being sent to that node. For example, if the cause of the
+  failure is too much traffic and the node running out of resources, more traffic isn't going to help the situation.
+  More concretely to Maelstrom's metrics, circuit breakers should decrease the `messages-per-op` in the presence of
+  failures without increasing latency much.
+
+  I tried to implement circuit breakers in my implementation (using the [failsafe](https://crates.io/crates/failsafe)
+  crate), but it didn't seem to work well. I suspect that crate is not designed for failures that last sub-1s and may go
+  from failing-healthy-failing in less than a second, which is a possible scenario in the Maelstrom workload.
 
 ## CRDTs
 
