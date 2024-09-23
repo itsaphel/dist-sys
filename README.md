@@ -123,6 +123,9 @@ When batching together messages, we get lower `messages-per-op`, in exchange for
 
 ## Kafka
 
+* Single-node test:
+  `maelstrom test -w kafka --bin target/debug/kafka --node-count 1 --concurrency 2n --time-limit 20 --rate 1000`
+
 The Kafka challenge is about replicating a log across nodes.
 
 Each log is identified by a key (like a kafka topic) and contains a bunch of messages which are identified by integer

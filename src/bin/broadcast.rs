@@ -16,31 +16,31 @@ pub(crate) fn main() -> Result<()> {
 }
 
 async fn try_main() -> Result<()> {
-    let handler = Arc::new(Handler::new());
+    let handler = Arc::new(Handler::default());
     Runtime::new().with_handler(handler).run().await
 }
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 struct Handler {
     // List of messages received by this node
     messages: Arc<Mutex<Vec<u64>>>,
     // List of neighbours of this node
-    neighbours: Arc<Mutex<Inner<String>>>,
+    neighbours: Arc<Mutex<NeighboursInner>>,
     // A queue for unsent outbound messages
     queue: Arc<Mutex<Queue>>,
 }
 
 #[derive(Default)]
-struct Inner<T> {
-    vec: Vec<T>,
+struct NeighboursInner {
+    vec: Vec<String>,
 }
 
+#[derive(Default)]
 struct Queue {
     thread_running: bool,
     items: VecDeque<QueueItem>,
 }
 
-#[derive(Debug)]
 struct QueueItem {
     node: String,
     message: u64,
@@ -52,25 +52,11 @@ impl Display for QueueItem {
     }
 }
 
-// The handler contains implementations for various functions used by the `process` function of the
-// Node trait. This is because we need a non-async function to use std's Mutex implementation.
-// We could otherwise use Tokio's Mutex, which works in an async context, but is slower.
+/// The handler contains implementations for various functions used by the `process` function of the
+/// Node trait. This is because we need a non-async function to use std's Mutex implementation.
+/// We could otherwise use Tokio's Mutex, which works in an async context, but is slower.
 impl Handler {
-    fn new() -> Self {
-        let neighbours: Inner<String> = Inner::default();
-        let queue = Queue {
-            thread_running: false,
-            items: VecDeque::new(),
-        };
-
-        Self {
-            messages: Arc::new(Mutex::new(Vec::new())),
-            neighbours: Arc::new(Mutex::new(neighbours)),
-            queue: Arc::new(Mutex::new(queue)),
-        }
-    }
-
-    // Get a snapshot of messages on this node
+    /// Get a snapshot of messages on this node
     fn get_messages(&self) -> Vec<u64> {
         let messages = self.messages.lock()
             .expect("Could not get lock on messages");
@@ -78,8 +64,8 @@ impl Handler {
         messages.clone()
     }
 
-    // Add a message to messages. Returns whether the message was added (that is, whether it was
-    // previously unseen).
+    /// Add a message to messages. Returns whether the message was added (that is, whether it was
+    /// previously unseen).
     fn add_message(&self, message: u64) -> bool {
         let mut messages = self.messages.lock()
             .expect("Could not get mutable lock on messages");
@@ -91,7 +77,7 @@ impl Handler {
         false
     }
 
-    // Return the neighbours of this node.
+    /// Return the neighbours of this node.
     fn get_neighbours(&self) -> Vec<String> {
         let neighbours = self.neighbours.lock()
             .expect("Failed to get lock on neighbours");
@@ -99,15 +85,15 @@ impl Handler {
         neighbours.vec.clone()
     }
 
-    // Replace the neighbours of this node.
+    /// Replace the neighbours of this node.
     fn replace_neighbours(&self, new_neighbours: Vec<String>) {
         let mut neighbours = self.neighbours.lock()
             .expect("Could not lock neighbours for replacement");
         neighbours.vec = new_neighbours.clone();
     }
 
-    // Add a message to an outbox queue. The queue will keep trying to resend the message in a
-    // background thread until a successful response is received.
+    /// Add a message to an outbox queue. The queue will keep trying to resend the message in a
+    /// background thread until a successful response is received.
     fn add_message_to_queue(&self, to_node: String, message: u64, runtime: Runtime) {
         let mut queue = self.queue.lock()
             .expect("Could not get lock on queue");
@@ -130,8 +116,8 @@ impl Handler {
     }
 }
 
-// Send a message to a node with retries.
-// If the communication fails due to an error, it will be retried.
+/// Send a message to a node with retries.
+/// If the communication fails due to an error, it will be retried.
 async fn send_message_with_retry(
     runtime: Runtime,
     handler: Handler,
@@ -201,7 +187,7 @@ impl Node for Handler {
                     // Gossip message to neighbours, but exclude the sender of the broadcast
                     let neighbours: Vec<String> = self.get_neighbours()
                         .into_iter()
-                        .filter(|t: &String| t.as_str() != msg.src)
+                        .filter(|t| t.as_str() != msg.src)
                         .collect();
                     for node in neighbours {
                         runtime.spawn(

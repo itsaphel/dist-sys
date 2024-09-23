@@ -6,47 +6,46 @@ use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, RwLock};
 
 const POLL_ITEM_LIMIT: usize = 10;
+type TopicKey = String;
 
 pub(crate) fn main() -> Result<()> {
     Runtime::init(try_main())
 }
 
 async fn try_main() -> Result<()> {
-    let handler = Arc::new(Handler::new());
+    let handler = Arc::new(Handler::default());
     Runtime::new().with_handler(handler).run().await
 }
 
-#[derive(Clone)]
+#[derive(Clone, Default)]
 struct Handler {
-    logs: Arc<RwLock<HashMap<String, Arc<ReplicationLog>>>>,
+    // TODO: Consider dashmap instead of RwLock<HashMap>>
+    logs: Arc<RwLock<HashMap<TopicKey, ReplicationLog>>>,
 }
 
+#[derive(Clone, Default)]
 struct ReplicationLog {
-    inner: RwLock<ReplicationLogInner>,
+    inner: Arc<RwLock<ReplicationLogInner>>,
 }
 
+#[derive(Default)]
 struct ReplicationLogInner {
     messages: BTreeMap<u64, u64>,
     committed_offset: u64,
 }
 
 impl Handler {
-    fn new() -> Self {
-        Self {
-            logs: Arc::new(RwLock::new(HashMap::new())),
-        }
-    }
-
-    fn get_or_create_log(&self, topic: String) -> Arc<ReplicationLog> {
+    fn get_or_create_log(&self, topic: TopicKey) -> ReplicationLog {
         let map = self.logs.read().unwrap();
 
         if let Some(log) = map.get(&topic) {
             log.clone()
         } else {
-            drop(map);
             // Upgrade our lock to a write lock and add a new replication log to the map
+            drop(map);
             let mut map = self.logs.write().unwrap();
-            let log = Arc::new(ReplicationLog::new());
+
+            let log = ReplicationLog::default();
             map.insert(topic, log.clone());
             log
         }
@@ -54,17 +53,6 @@ impl Handler {
 }
 
 impl ReplicationLog {
-    fn new() -> Self {
-        let inner = ReplicationLogInner {
-            messages: BTreeMap::new(),
-            committed_offset: 0,
-        };
-
-        Self {
-            inner: RwLock::new(inner)
-        }
-    }
-
     /// Append a message to this replication log
     /// Returns the offset of the message
     fn append(&self, message: u64) -> u64 {
@@ -108,10 +96,10 @@ impl ReplicationLog {
 #[derive(Serialize, Deserialize)]
 #[serde(rename_all = "snake_case", tag = "type")]
 enum Request {
-    Send { key: String, msg: u64 },
-    Poll { offsets: HashMap<String, u64> },
-    CommitOffsets { offsets: HashMap<String, u64> },
-    ListCommittedOffsets { keys: Vec<String> },
+    Send { key: TopicKey, msg: u64 },
+    Poll { offsets: HashMap<TopicKey, u64> },
+    CommitOffsets { offsets: HashMap<TopicKey, u64> },
+    ListCommittedOffsets { keys: Vec<TopicKey> },
 }
 
 
@@ -119,8 +107,8 @@ enum Request {
 #[serde(rename_all = "snake_case", tag = "type")]
 enum Response {
     SendOk { offset: u64 },
-    PollOk { msgs: HashMap<String, Vec<(u64, u64)>> },
-    ListCommittedOffsetsOk { offsets: HashMap<String, u64> },
+    PollOk { msgs: HashMap<TopicKey, Vec<(u64, u64)>> },
+    ListCommittedOffsetsOk { offsets: HashMap<TopicKey, u64> },
 }
 
 #[async_trait]
@@ -135,7 +123,7 @@ impl Node for Handler {
                 runtime.reply(msg, Response::SendOk { offset }).await
             }
             Ok(Request::Poll { offsets: topics_with_offsets }) => {
-                let messages: HashMap<String, Vec<(u64, u64)>> = topics_with_offsets
+                let messages: HashMap<TopicKey, Vec<(u64, u64)>> = topics_with_offsets
                     .into_iter()
                     .map(|(topic, from_offset)| {
                         let log = self.get_or_create_log(topic.clone());
@@ -154,7 +142,7 @@ impl Node for Handler {
                 runtime.reply_ok(msg).await
             }
             Ok(Request::ListCommittedOffsets { keys: topics }) => {
-                let offsets: HashMap<String, u64> = topics
+                let offsets: HashMap<TopicKey, u64> = topics
                     .into_iter()
                     .map(|topic| {
                         let log = self.get_or_create_log(topic.clone());
@@ -175,7 +163,7 @@ mod tests {
 
     #[test]
     fn test_replication_log() {
-        let log = ReplicationLog::new();
+        let log = ReplicationLog::default();
 
         // Initially it should have no messages and the committed offset should be 0
         assert!(log.list(0, 10).is_empty());
@@ -197,7 +185,7 @@ mod tests {
 
     #[test]
     fn test_handler() {
-        let handler = Handler::new();
+        let handler = Handler::default();
 
         // We can create a new log
         let log = handler.get_or_create_log("topic".to_string());
@@ -210,6 +198,6 @@ mod tests {
 
         // And get the same log again
         let log2 = handler.get_or_create_log("topic".to_string());
-        assert!(Arc::ptr_eq(&log, &log2));
+        assert!(Arc::ptr_eq(&log.inner, &log2.inner));
     }
 }
