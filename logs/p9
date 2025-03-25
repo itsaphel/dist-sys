@@ -1,0 +1,78 @@
+[Tue Mar 25 11:24:51 2025 UTC] [0simple.test] NOTE:check starts
+[Tue Mar 25 11:24:51 2025 UTC] [0simple.test] NOTE:checking whether simple usage works
+[Tue Mar 25 11:24:51 2025 UTC] [0simple.test] NOTE:connected to 138.68.117.167 port 7128
+[Tue Mar 25 11:24:51 2025 UTC] [0simple.test] NOTE:inserted job 'j-vV3Ory7D'
+[Tue Mar 25 11:24:52 2025 UTC] [0simple.test] NOTE:retrieved job 'j-vV3Ory7D'
+[Tue Mar 25 11:24:52 2025 UTC] [0simple.test] PASS
+[Tue Mar 25 11:24:53 2025 UTC] [1priorities.test] NOTE:check starts
+[Tue Mar 25 11:24:53 2025 UTC] [1priorities.test] NOTE:checking whether 100 jobs come out in priority order
+[Tue Mar 25 11:24:53 2025 UTC] [1priorities.test] NOTE:connected to 138.68.117.167 port 7128
+[Tue Mar 25 11:24:58 2025 UTC] [1priorities.test] PASS
+[Tue Mar 25 11:24:59 2025 UTC] [2abort.test] NOTE:check starts
+[Tue Mar 25 11:24:59 2025 UTC] [2abort.test] NOTE:checking whether aborting a job works
+[Tue Mar 25 11:24:59 2025 UTC] [2abort.test] NOTE:connected to 138.68.117.167 port 7128
+[Tue Mar 25 11:24:59 2025 UTC] [2abort.test] NOTE:inserted job 'j-ULkjGyXW'
+[Tue Mar 25 11:24:59 2025 UTC] [2abort.test] NOTE:retrieved job 'j-ULkjGyXW'
+[Tue Mar 25 11:24:59 2025 UTC] [2abort.test] NOTE:aborted job 'j-ULkjGyXW'
+[Tue Mar 25 11:24:59 2025 UTC] [2abort.test] NOTE:retrieved job 'j-ULkjGyXW'
+[Tue Mar 25 11:24:59 2025 UTC] [2abort.test] PASS
+[Tue Mar 25 11:25:00 2025 UTC] [3implicitabort.test] NOTE:check starts
+[Tue Mar 25 11:25:00 2025 UTC] [3implicitabort.test] NOTE:checking whether jobs are aborted when their worker disconnects
+[Tue Mar 25 11:25:00 2025 UTC] [3implicitabort.test] NOTE:connected to 138.68.117.167 port 7128
+[Tue Mar 25 11:25:00 2025 UTC] [3implicitabort.test] NOTE:connected to 138.68.117.167 port 7128
+[Tue Mar 25 11:25:00 2025 UTC] [3implicitabort.test] NOTE:connected to 138.68.117.167 port 7128
+[Tue Mar 25 11:25:00 2025 UTC] [3implicitabort.test] NOTE:connected to 138.68.117.167 port 7128
+[Tue Mar 25 11:25:00 2025 UTC] [3implicitabort.test] NOTE:inserted job 'j-wOVTeWTV'
+[Tue Mar 25 11:25:01 2025 UTC] [3implicitabort.test] NOTE:worker disconnects
+[Tue Mar 25 11:25:02 2025 UTC] [3implicitabort.test] NOTE:retrieved job 'j-wOVTeWTV'
+[Tue Mar 25 11:25:03 2025 UTC] [3implicitabort.test] NOTE:worker disconnects
+[Tue Mar 25 11:25:03 2025 UTC] [3implicitabort.test] NOTE:retrieved job 'j-wOVTeWTV'
+[Tue Mar 25 11:25:06 2025 UTC] [3implicitabort.test] PASS
+[Tue Mar 25 11:25:07 2025 UTC] [4delete.test] NOTE:check starts
+[Tue Mar 25 11:25:07 2025 UTC] [4delete.test] NOTE:checking whether deleting a job works
+[Tue Mar 25 11:25:07 2025 UTC] [4delete.test] NOTE:connected to 138.68.117.167 port 7128
+[Tue Mar 25 11:25:07 2025 UTC] [4delete.test] NOTE:inserted job 'j-3fMnR7b4' with pri=200 (id=104)
+[Tue Mar 25 11:25:07 2025 UTC] [4delete.test] NOTE:inserted job 'j-NXrCdRfC' with pri=100 (id=105)
+[Tue Mar 25 11:25:07 2025 UTC] [4delete.test] NOTE:deleted job 'j-3fMnR7b4'
+[Tue Mar 25 11:25:07 2025 UTC] [4delete.test] NOTE:retrieved job 'j-NXrCdRfC'
+[Tue Mar 25 11:25:07 2025 UTC] [4delete.test] PASS
+[Tue Mar 25 11:25:09 2025 UTC] [5multiworker.test] NOTE:check starts
+[Tue Mar 25 11:25:09 2025 UTC] [5multiworker.test] NOTE:checking with 10 workers
+[Tue Mar 25 11:25:09 2025 UTC] [5multiworker.test] NOTE:connected to 138.68.117.167 port 7128
+[Tue Mar 25 11:25:09 2025 UTC] [5multiworker.test] NOTE:connected to 138.68.117.167 port 7128
+[Tue Mar 25 11:25:09 2025 UTC] [5multiworker.test] NOTE:connected to 138.68.117.167 port 7128
+[Tue Mar 25 11:25:09 2025 UTC] [5multiworker.test] NOTE:connected to 138.68.117.167 port 7128
+[Tue Mar 25 11:25:09 2025 UTC] [5multiworker.test] NOTE:connected to 138.68.117.167 port 7128
+[Tue Mar 25 11:25:09 2025 UTC] [5multiworker.test] NOTE:connected to 138.68.117.167 port 7128
+[Tue Mar 25 11:25:09 2025 UTC] [5multiworker.test] NOTE:connected to 138.68.117.167 port 7128
+[Tue Mar 25 11:25:09 2025 UTC] [5multiworker.test] NOTE:connected to 138.68.117.167 port 7128
+[Tue Mar 25 11:25:09 2025 UTC] [5multiworker.test] NOTE:connected to 138.68.117.167 port 7128
+[Tue Mar 25 11:25:09 2025 UTC] [5multiworker.test] NOTE:connected to 138.68.117.167 port 7128
+[Tue Mar 25 11:25:09 2025 UTC] [5multiworker.test] PASS
+[Tue Mar 25 11:25:10 2025 UTC] [6errors.test] NOTE:check starts
+[Tue Mar 25 11:25:11 2025 UTC] [6errors.test] NOTE:checking whether common errors are handled correctly
+[Tue Mar 25 11:25:11 2025 UTC] [6errors.test] NOTE:connected to 138.68.117.167 port 7128
+[Tue Mar 25 11:25:11 2025 UTC] [6errors.test] NOTE:connected to 138.68.117.167 port 7128
+[Tue Mar 25 11:25:11 2025 UTC] [6errors.test] NOTE:connected to 138.68.117.167 port 7128
+[Tue Mar 25 11:25:11 2025 UTC] [6errors.test] NOTE:connected to 138.68.117.167 port 7128
+[Tue Mar 25 11:25:11 2025 UTC] [6errors.test] PASS
+[Tue Mar 25 11:25:12 2025 UTC] [7large.test] NOTE:check starts
+[Tue Mar 25 11:25:12 2025 UTC] [7large.test] NOTE:checking with 1000 clients and 50000 jobs
+[Tue Mar 25 11:25:12 2025 UTC] [7large.test] NOTE:connected to 138.68.117.167 port 7128
+[Tue Mar 25 11:25:12 2025 UTC] [7large.test] NOTE:connected to 138.68.117.167 port 7128
+[Tue Mar 25 11:25:12 2025 UTC] [7large.test] NOTE:connected to 138.68.117.167 port 7128
+[Tue Mar 25 11:25:12 2025 UTC] [7large.test] NOTE:connected to 138.68.117.167 port 7128
+[Tue Mar 25 11:25:12 2025 UTC] [7large.test] NOTE:connected to 138.68.117.167 port 7128
+[Tue Mar 25 11:25:12 2025 UTC] [7large.test] NOTE:connected to 138.68.117.167 port 7128
+[Tue Mar 25 11:25:12 2025 UTC] [7large.test] NOTE:connected to 138.68.117.167 port 7128
+[Tue Mar 25 11:25:12 2025 UTC] [7large.test] NOTE:connected to 138.68.117.167 port 7128
+[Tue Mar 25 11:25:15 2025 UTC] [7large.test] NOTE:retrieved 5000/50000 jobs
+[Tue Mar 25 11:25:19 2025 UTC] [7large.test] NOTE:retrieved 10000/50000 jobs
+[Tue Mar 25 11:25:23 2025 UTC] [7large.test] NOTE:retrieved 15000/50000 jobs
+[Tue Mar 25 11:25:28 2025 UTC] [7large.test] NOTE:retrieved 20000/50000 jobs
+[Tue Mar 25 11:25:34 2025 UTC] [7large.test] NOTE:retrieved 25000/50000 jobs
+[Tue Mar 25 11:25:40 2025 UTC] [7large.test] NOTE:retrieved 30000/50000 jobs
+[Tue Mar 25 11:25:47 2025 UTC] [7large.test] NOTE:retrieved 35000/50000 jobs
+[Tue Mar 25 11:25:56 2025 UTC] [7large.test] NOTE:retrieved 40000/50000 jobs
+[Tue Mar 25 11:26:06 2025 UTC] [7large.test] NOTE:retrieved 45000/50000 jobs
+[Tue Mar 25 11:26:12 2025 UTC] [7large.test] FAIL:alarm timeout after 60 seconds
