@@ -371,6 +371,8 @@ fn main() {
     })
 }
 
+// TODO: Could it be done without Mutex? Just pass a ref around. It's single-threaded after all.
+
 #[cfg(test)]
 mod tests {
     use super::*;
